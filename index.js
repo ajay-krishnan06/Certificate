@@ -10,7 +10,7 @@ const { createCanvas, registerFont } = require("canvas");
 
 const app = express();
 
-// ✅ UPDATED CORS CONFIG (only change)
+// ✅ UPDATED CORS CONFIG
 const allowedOrigins = [
   "https://www.ranipetpledge.in",
   process.env.FRONTEND_URL,
@@ -31,10 +31,10 @@ app.use(
 
 app.use(express.json());
 
-// ✅ FIX: Required for deployment (Render)
+// ✅ Required for deployment (Render)
 process.env.FONTCONFIG_PATH = "/etc/fonts";
 
-// ✅ FIX: Use resolve + proper registration
+// ✅ Register Tamil font
 registerFont(
   path.resolve(__dirname, "fonts", "NotoSansTamil-VariableFont_wdth,wght.ttf"),
   { family: "TamilFont" }
@@ -48,6 +48,71 @@ app.get("/", (req, res) => {
 // Detect Tamil
 function containsTamil(text) {
   return /[\u0B80-\u0BFF]/.test(text);
+}
+
+// ✅ Improved Tamil font sizing
+function getTamilFontSize(text, maxWidth, ctx) {
+  const len = text.trim().length;
+  let fontSize;
+
+  if (len <= 3) {
+    fontSize = 92;
+  } else if (len <= 6) {
+    fontSize = 68;
+  } else if (len <= 10) {
+    fontSize = 61;
+  } else if (len <= 15) {
+    fontSize = 55;
+  } else {
+    fontSize = 23;
+  }
+
+  while (fontSize > 18) {
+    ctx.font = `${fontSize}px "TamilFont"`;
+    const metrics = ctx.measureText(text);
+
+    const width = metrics.width;
+    const height =
+      (metrics.actualBoundingBoxAscent || fontSize * 0.8) +
+      (metrics.actualBoundingBoxDescent || fontSize * 0.2);
+
+    if (width <= maxWidth * 0.82 && height <= 48) {
+      break;
+    }
+
+    fontSize -= 1;
+  }
+
+  return fontSize;
+}
+
+// ✅ English font sizing
+function getEnglishFontSize(text, maxWidth, font) {
+  const nameLength = text.trim().length;
+
+  let fontSize;
+  if (nameLength <= 6) {
+    fontSize = 28;
+  } else if (nameLength <= 10) {
+    fontSize = 30;
+  } else if (nameLength <= 16) {
+    fontSize = 32;
+  } else {
+    fontSize = 28;
+  }
+
+  while (fontSize > 18) {
+    const textWidth = font.widthOfTextAtSize(text, fontSize);
+    const textHeight = font.heightAtSize(fontSize);
+
+    if (textWidth <= maxWidth * 0.88 && textHeight <= 60) {
+      break;
+    }
+
+    fontSize -= 1;
+  }
+
+  return fontSize;
 }
 
 app.post("/generate-certificate", async (req, res) => {
@@ -87,7 +152,7 @@ app.post("/generate-certificate", async (req, res) => {
     const engFontBytes = fs.readFileSync(engFontPath);
     const engFont = await pdfDoc.embedFont(engFontBytes);
 
-    // Collector font (Arial style)
+    // Collector font
     const collectorFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     const lineStartX = width * 0.30;
@@ -96,7 +161,7 @@ app.post("/generate-certificate", async (req, res) => {
     const maxHeight = height * 0.06;
 
     const xOffset = 10;
-    const baseY = height * 0.455;
+    const baseY = height * 0.46;
     const textColor = rgb(0.11, 0.21, 0.24);
 
     const collectorText = "Dr.J. U. Chandrakala, I.A.S.";
@@ -122,27 +187,30 @@ app.post("/generate-certificate", async (req, res) => {
       const measureCanvas = createCanvas(2000, 400);
       const measureCtx = measureCanvas.getContext("2d");
 
-      let fontSize = 48;
-      let measuredWidth = 0;
-      let measuredHeight = 0;
+      let fontSize = getTamilFontSize(cleanName, lineWidth, measureCtx);
 
-      while (fontSize > 18) {
-        measureCtx.font = `${fontSize}px "TamilFont"`;
-        const metrics = measureCtx.measureText(cleanName);
+      measureCtx.font = `${fontSize}px "TamilFont"`;
+      let measureMetrics = measureCtx.measureText(cleanName);
+      let measuredWidth = measureMetrics.width;
+      let measuredHeight =
+        (measureMetrics.actualBoundingBoxAscent || fontSize * 0.8) +
+        (measureMetrics.actualBoundingBoxDescent || fontSize * 0.2);
 
-        measuredWidth = metrics.width;
-
-        const ascent = metrics.actualBoundingBoxAscent || fontSize * 0.8;
-        const descent = metrics.actualBoundingBoxDescent || fontSize * 0.2;
-        measuredHeight = ascent + descent;
-
-        if (measuredWidth <= lineWidth && measuredHeight <= maxHeight) break;
-
+      while (
+        (measuredWidth > lineWidth * 0.82 || measuredHeight > maxHeight * 0.8) &&
+        fontSize > 18
+      ) {
         fontSize -= 1;
+        measureCtx.font = `${fontSize}px "TamilFont"`;
+        measureMetrics = measureCtx.measureText(cleanName);
+        measuredWidth = measureMetrics.width;
+        measuredHeight =
+          (measureMetrics.actualBoundingBoxAscent || fontSize * 0.8) +
+          (measureMetrics.actualBoundingBoxDescent || fontSize * 0.2);
       }
 
-      const paddingX = 30;
-      const paddingY = 20;
+      const paddingX = 24;
+      const paddingY = 16;
 
       const canvasWidth = Math.ceil(measuredWidth + paddingX * 2);
       const canvasHeight = Math.ceil(measuredHeight + paddingY * 2);
@@ -152,6 +220,7 @@ app.post("/generate-certificate", async (req, res) => {
 
       ctx.fillStyle = "#1c353c";
       ctx.font = `${fontSize}px "TamilFont"`;
+      ctx.textBaseline = "alphabetic";
 
       const finalMetrics = ctx.measureText(cleanName);
       const finalAscent =
@@ -164,21 +233,29 @@ app.post("/generate-certificate", async (req, res) => {
       const pngBuffer = textCanvas.toBuffer("image/png");
       const pngImage = await pdfDoc.embedPng(pngBuffer);
 
-      let scaleFactor;
+      const rawWidth = finalMetrics.width;
+      const rawHeight = finalAscent + finalDescent;
 
-      if (finalMetrics.width < lineWidth * 0.6) {
-        scaleFactor = (lineWidth * 0.75) / finalMetrics.width;
-      } else if (finalMetrics.width < lineWidth * 0.9) {
-        scaleFactor = (lineWidth * 0.7) / finalMetrics.width;
-      } else {
-        scaleFactor = (lineWidth * 0.62) / finalMetrics.width;
+      // ✅ Tamil scale tuned to avoid oversized short/long names
+      let scaleFactor = Math.min((lineWidth * 0.90) / rawWidth, 1.2);
+
+      // ✅ Keep Tamil safely within the line area
+      const maxAllowedHeight = maxHeight * 1.2;
+      let imageHeight = rawHeight * scaleFactor;
+
+      if (imageHeight > maxAllowedHeight) {
+        scaleFactor = maxAllowedHeight / rawHeight;
+        imageHeight = maxAllowedHeight;
       }
 
-      const imageWidth = finalMetrics.width * scaleFactor;
-      const imageHeight = (finalAscent + finalDescent) * scaleFactor;
+      const imageWidth = rawWidth * scaleFactor;
 
       const x = lineStartX + (lineWidth - imageWidth) / 2 + xOffset;
-      const y = baseY - imageHeight * 0.5;
+
+      // ✅ Tamil independent vertical tuning
+      const tamilYOffset = -5;
+      const baselineAdjust = imageHeight * 0.37;
+      const y = baseY - baselineAdjust + tamilYOffset;
 
       page.drawImage(pngImage, {
         x,
@@ -187,7 +264,7 @@ app.post("/generate-certificate", async (req, res) => {
         height: imageHeight,
       });
     } else {
-      let fontSize = 36;
+      let fontSize = getEnglishFontSize(cleanName, lineWidth, engFont);
       let textWidth = engFont.widthOfTextAtSize(cleanName, fontSize);
       let textHeight = engFont.heightAtSize(fontSize);
 
@@ -201,7 +278,11 @@ app.post("/generate-certificate", async (req, res) => {
       }
 
       const x = lineStartX + (lineWidth - textWidth) / 2 + xOffset;
-      const y = baseY - textHeight * 0.2;
+
+      // ✅ English kept separate
+      const englishYOffset = 2;
+      const baselineAdjust = textHeight * 0.30;
+      const y = baseY - baselineAdjust + englishYOffset;
 
       page.drawText(cleanName, {
         x,
