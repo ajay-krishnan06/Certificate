@@ -3,7 +3,7 @@ require("regenerator-runtime/runtime");
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
-const { PDFDocument, rgb, StandardFonts } = require("pdf-lib"); // ✅ updated
+const { PDFDocument, rgb, StandardFonts } = require("pdf-lib");
 const fontkit = require("@pdf-lib/fontkit");
 const cors = require("cors");
 const { createCanvas, registerFont } = require("canvas");
@@ -18,9 +18,12 @@ app.use(
   })
 );
 
-// Register Tamil font
+// ✅ FIX: Required for deployment (Render)
+process.env.FONTCONFIG_PATH = "/etc/fonts";
+
+// ✅ FIX: Use resolve + proper registration
 registerFont(
-  path.join(__dirname, "fonts", "NotoSansTamil-VariableFont_wdth,wght.ttf"),
+  path.resolve(__dirname, "fonts", "NotoSansTamil-VariableFont_wdth,wght.ttf"),
   { family: "TamilFont" }
 );
 
@@ -57,7 +60,7 @@ app.post("/generate-certificate", async (req, res) => {
     const page = pdfDoc.getPages()[0];
     const { width, height } = page.getSize();
 
-    // English font (for user name)
+    // English font
     const engFontPath = path.join(
       __dirname,
       "fonts",
@@ -71,7 +74,7 @@ app.post("/generate-certificate", async (req, res) => {
     const engFontBytes = fs.readFileSync(engFontPath);
     const engFont = await pdfDoc.embedFont(engFontBytes);
 
-    // ✅ Collector font (Arial-like)
+    // Collector font (Arial style)
     const collectorFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     const lineStartX = width * 0.30;
@@ -84,7 +87,7 @@ app.post("/generate-certificate", async (req, res) => {
     const textColor = rgb(0.11, 0.21, 0.24);
 
     // ===============================
-    // ✅ Collector Name (Arial style)
+    // Collector Name
     // ===============================
     const collectorText = "Dr.J. U. Chandrakala, I.A.S.";
     const collectorFontSize = 18;
@@ -117,7 +120,8 @@ app.post("/generate-certificate", async (req, res) => {
       let measuredHeight = 0;
 
       while (fontSize > 18) {
-        measureCtx.font = `${fontSize}px TamilFont`;
+        // ✅ FIX: quotes added
+        measureCtx.font = `${fontSize}px "TamilFont"`;
         const metrics = measureCtx.measureText(cleanName);
 
         measuredWidth = metrics.width;
@@ -141,7 +145,9 @@ app.post("/generate-certificate", async (req, res) => {
       const ctx = textCanvas.getContext("2d");
 
       ctx.fillStyle = "#1c353c";
-      ctx.font = `${fontSize}px TamilFont`;
+
+      // ✅ FIX: quotes added here too
+      ctx.font = `${fontSize}px "TamilFont"`;
 
       const finalMetrics = ctx.measureText(cleanName);
       const finalAscent =
@@ -170,7 +176,12 @@ app.post("/generate-certificate", async (req, res) => {
       const x = lineStartX + (lineWidth - imageWidth) / 2 + xOffset;
       const y = baseY - imageHeight * 0.5;
 
-      page.drawImage(pngImage, { x, y, width: imageWidth, height: imageHeight });
+      page.drawImage(pngImage, {
+        x,
+        y,
+        width: imageWidth,
+        height: imageHeight,
+      });
     } else {
       // English name
       let fontSize = 36;
