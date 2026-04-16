@@ -12,7 +12,7 @@ const app = express();
 
 // ✅ UPDATED CORS CONFIG (only change)
 const allowedOrigins = [
-  "http://localhost:5173",
+  "https://www.ranipetpledge.in",
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
