@@ -10,13 +10,26 @@ const { createCanvas, registerFont } = require("canvas");
 
 const app = express();
 
-app.use(express.json());
+// ✅ UPDATED CORS CONFIG (only change)
+const allowedOrigins = [
+  "http://localhost:5173",
+  process.env.FRONTEND_URL,
+].filter(Boolean);
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "*",
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("Not allowed by CORS"));
+    },
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type"],
   })
 );
+
+app.use(express.json());
 
 // ✅ FIX: Required for deployment (Render)
 process.env.FONTCONFIG_PATH = "/etc/fonts";
@@ -86,9 +99,6 @@ app.post("/generate-certificate", async (req, res) => {
     const baseY = height * 0.455;
     const textColor = rgb(0.11, 0.21, 0.24);
 
-    // ===============================
-    // Collector Name
-    // ===============================
     const collectorText = "Dr.J. U. Chandrakala, I.A.S.";
     const collectorFontSize = 18;
 
@@ -108,9 +118,6 @@ app.post("/generate-certificate", async (req, res) => {
       color: rgb(0.2, 0.25, 0.27),
     });
 
-    // -------------------------
-    // Tamil rendering
-    // -------------------------
     if (containsTamil(cleanName)) {
       const measureCanvas = createCanvas(2000, 400);
       const measureCtx = measureCanvas.getContext("2d");
@@ -120,7 +127,6 @@ app.post("/generate-certificate", async (req, res) => {
       let measuredHeight = 0;
 
       while (fontSize > 18) {
-        // ✅ FIX: quotes added
         measureCtx.font = `${fontSize}px "TamilFont"`;
         const metrics = measureCtx.measureText(cleanName);
 
@@ -145,8 +151,6 @@ app.post("/generate-certificate", async (req, res) => {
       const ctx = textCanvas.getContext("2d");
 
       ctx.fillStyle = "#1c353c";
-
-      // ✅ FIX: quotes added here too
       ctx.font = `${fontSize}px "TamilFont"`;
 
       const finalMetrics = ctx.measureText(cleanName);
@@ -183,7 +187,6 @@ app.post("/generate-certificate", async (req, res) => {
         height: imageHeight,
       });
     } else {
-      // English name
       let fontSize = 36;
       let textWidth = engFont.widthOfTextAtSize(cleanName, fontSize);
       let textHeight = engFont.heightAtSize(fontSize);
