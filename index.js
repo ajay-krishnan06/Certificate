@@ -50,24 +50,24 @@ function containsTamil(text) {
   return /[\u0B80-\u0BFF]/.test(text);
 }
 
-// ✅ Improved Tamil font sizing
+// ✅ Tamil font sizing (changed only for Tamil)
 function getTamilFontSize(text, maxWidth, ctx) {
   const len = text.trim().length;
   let fontSize;
 
   if (len <= 3) {
-    fontSize = 92;
+    fontSize = 60;
   } else if (len <= 6) {
-    fontSize = 68;
+    fontSize = 46;
   } else if (len <= 10) {
-    fontSize = 61;
-  } else if (len <= 15) {
-    fontSize = 55;
+    fontSize = 40;
+  } else if (len <= 16) {
+    fontSize = 34;
   } else {
-    fontSize = 23;
+    fontSize = 28;
   }
 
-  while (fontSize > 18) {
+  while (fontSize > 20) {
     ctx.font = `${fontSize}px "TamilFont"`;
     const metrics = ctx.measureText(text);
 
@@ -76,11 +76,11 @@ function getTamilFontSize(text, maxWidth, ctx) {
       (metrics.actualBoundingBoxAscent || fontSize * 0.8) +
       (metrics.actualBoundingBoxDescent || fontSize * 0.2);
 
-    if (width <= maxWidth * 0.82 && height <= 48) {
+    if (width <= maxWidth * 0.84 && height <= 30) {
       break;
     }
 
-    fontSize -= 1;
+    fontSize -= 2;
   }
 
   return fontSize;
@@ -92,13 +92,13 @@ function getEnglishFontSize(text, maxWidth, font) {
 
   let fontSize;
   if (nameLength <= 6) {
-    fontSize = 28;
+    fontSize = 26;
   } else if (nameLength <= 10) {
-    fontSize = 30;
-  } else if (nameLength <= 16) {
-    fontSize = 32;
-  } else {
     fontSize = 28;
+  } else if (nameLength <= 16) {
+    fontSize = 30;
+  } else {
+    fontSize = 18;
   }
 
   while (fontSize > 18) {
@@ -184,7 +184,7 @@ app.post("/generate-certificate", async (req, res) => {
     });
 
     if (containsTamil(cleanName)) {
-      const measureCanvas = createCanvas(2000, 400);
+      const measureCanvas = createCanvas(2500, 500);
       const measureCtx = measureCanvas.getContext("2d");
 
       let fontSize = getTamilFontSize(cleanName, lineWidth, measureCtx);
@@ -197,10 +197,10 @@ app.post("/generate-certificate", async (req, res) => {
         (measureMetrics.actualBoundingBoxDescent || fontSize * 0.2);
 
       while (
-        (measuredWidth > lineWidth * 0.82 || measuredHeight > maxHeight * 0.8) &&
-        fontSize > 18
+        (measuredWidth > lineWidth * 0.84 || measuredHeight > maxHeight * 0.72) &&
+        fontSize > 20
       ) {
-        fontSize -= 1;
+        fontSize -= 2;
         measureCtx.font = `${fontSize}px "TamilFont"`;
         measureMetrics = measureCtx.measureText(cleanName);
         measuredWidth = measureMetrics.width;
@@ -209,8 +209,8 @@ app.post("/generate-certificate", async (req, res) => {
           (measureMetrics.actualBoundingBoxDescent || fontSize * 0.2);
       }
 
-      const paddingX = 24;
-      const paddingY = 16;
+      const paddingX = 30;
+      const paddingY = 8;
 
       const canvasWidth = Math.ceil(measuredWidth + paddingX * 2);
       const canvasHeight = Math.ceil(measuredHeight + paddingY * 2);
@@ -236,11 +236,17 @@ app.post("/generate-certificate", async (req, res) => {
       const rawWidth = finalMetrics.width;
       const rawHeight = finalAscent + finalDescent;
 
-      // ✅ Tamil scale tuned to avoid oversized short/long names
-      let scaleFactor = Math.min((lineWidth * 0.90) / rawWidth, 1.2);
+      let scaleFactor;
+      let maxAllowedHeight;
 
-      // ✅ Keep Tamil safely within the line area
-      const maxAllowedHeight = maxHeight * 1.2;
+      if (cleanName.trim().length <= 3) {
+        scaleFactor = Math.min((lineWidth * 0.92) / rawWidth, 1.18);
+        maxAllowedHeight = maxHeight * 0.92;
+      } else {
+        scaleFactor = Math.min((lineWidth * 0.82) / rawWidth, 1);
+        maxAllowedHeight = maxHeight * 0.72;
+      }
+
       let imageHeight = rawHeight * scaleFactor;
 
       if (imageHeight > maxAllowedHeight) {
@@ -252,9 +258,8 @@ app.post("/generate-certificate", async (req, res) => {
 
       const x = lineStartX + (lineWidth - imageWidth) / 2 + xOffset;
 
-      // ✅ Tamil independent vertical tuning
-      const tamilYOffset = -5;
-      const baselineAdjust = imageHeight * 0.37;
+      const tamilYOffset = -8;
+      const baselineAdjust = imageHeight * 0.40;
       const y = baseY - baselineAdjust + tamilYOffset;
 
       page.drawImage(pngImage, {
